@@ -22,7 +22,6 @@ namespace UnityEngine.Rendering.Universal.Internal
     {
         RenderTextureDescriptor m_Descriptor;
         RenderTargetHandle m_Source;
-        RenderTargetHandle m_UguiTarget;
         RenderTargetHandle m_Destination;
         RenderTargetHandle m_Depth;
         RenderTargetHandle m_InternalLut;
@@ -132,22 +131,6 @@ namespace UnityEngine.Rendering.Universal.Internal
         public void Setup(in RenderTextureDescriptor baseDescriptor, in RenderTargetHandle source, in RenderTargetHandle destination, in RenderTargetHandle depth, in RenderTargetHandle internalLut, bool hasFinalPass, bool enableSRGBConversion)
         {
             m_Descriptor = baseDescriptor;
-            //m_Descriptor.graphicsFormat = GraphicsFormat.R8G8B8A8_UNorm; //Add by:Takeshi
-            m_Descriptor.useMipMap = false;
-            m_Descriptor.autoGenerateMips = false;
-            m_Source = source;
-            m_Destination = destination;
-            m_Depth = depth;
-            m_InternalLut = internalLut;
-            m_IsFinalPass = false;
-            m_HasFinalPass = hasFinalPass;
-            m_EnableSRGBConversionIfNeeded = enableSRGBConversion;
-        }
-        public void Setup(in RenderTextureDescriptor baseDescriptor, in RenderTargetHandle source, in RenderTargetHandle destination, in RenderTargetHandle depth, in RenderTargetHandle internalLut, in RenderTargetHandle uiTarget,bool hasFinalPass, bool enableSRGBConversion)
-        {
-            m_UguiTarget = uiTarget;
-            m_Descriptor = baseDescriptor;
-            //m_Descriptor.graphicsFormat = GraphicsFormat.R8G8B8A8_UNorm; //Add by:Takeshi
             m_Descriptor.useMipMap = false;
             m_Descriptor.autoGenerateMips = false;
             m_Source = source;
@@ -166,15 +149,6 @@ namespace UnityEngine.Rendering.Universal.Internal
             m_IsFinalPass = true;
             m_HasFinalPass = false;
             m_EnableSRGBConversionIfNeeded = true;
-        }
-        public void SetupFinalPass(in RenderTargetHandle source,in RenderTargetHandle uguiTarget)
-        {
-            m_Source = source;
-            m_Destination = RenderTargetHandle.CameraTarget;
-            m_IsFinalPass = true;
-            m_HasFinalPass = false;
-            m_EnableSRGBConversionIfNeeded = true;
-            m_UguiTarget = uguiTarget;
         }
 
         /// <inheritdoc/>
@@ -240,15 +214,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                 var cmd = CommandBufferPool.Get();
                 using (new ProfilingScope(cmd, m_ProfilingRenderFinalPostProcessing))
                 {
-                    // Add By:      Takeshi;
-                    // Purpose:     Final Process of Fix UI alpha gamma in case of FXAA ON.
-                    cmd.EnableShaderKeyword(ShaderKeywordStrings.SRGBToLinearConversion);
-                    // End Add
-                    
                     RenderFinalPass(cmd, ref renderingData);
-                    
-                    // Add By: Takeshi; End the Final Process.
-                    cmd.DisableShaderKeyword(ShaderKeywordStrings.SRGBToLinearConversion);
                 }
 
                 context.ExecuteCommandBuffer(cmd);
@@ -266,13 +232,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                 var cmd = CommandBufferPool.Get();
                 using (new ProfilingScope(cmd, m_ProfilingRenderPostProcessing))
                 {
-                    // Add By: Takeshi; Purpose: First Process of Fix UI alpha gamma.
-                    cmd.EnableShaderKeyword(ShaderKeywordStrings.LinearToSRGBConversion);
-                    
                     Render(cmd, ref renderingData);
-                    
-                    // Add By: Takeshi; End the First Process.
-                    cmd.DisableShaderKeyword(ShaderKeywordStrings.LinearToSRGBConversion);
                 }
 
                 context.ExecuteCommandBuffer(cmd);
@@ -526,12 +486,10 @@ namespace UnityEngine.Rendering.Universal.Internal
                     if (!finishPostProcessOnScreen)
                     {
                         cmd.SetGlobalTexture(ShaderPropertyId.sourceTex, cameraTarget);
-                        
-                        // Change by:Takeshi; Set UI target
-                        cmd.SetRenderTarget(m_UguiTarget.id, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.DontCare);
-                        
+                        cmd.SetRenderTarget(m_Source.id, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.DontCare);
                         cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, m_BlitMaterial);
                     }
+
                     cmd.SetViewProjectionMatrices(cameraData.camera.worldToCameraMatrix, cameraData.camera.projectionMatrix);
                 }
 
@@ -1237,7 +1195,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             if (RequireSRGBConversionBlitToBackBuffer(cameraData))
                 material.EnableKeyword(ShaderKeywordStrings.LinearToSRGBConversion);
 
-            cmd.SetGlobalTexture(ShaderPropertyId.sourceTex, m_UguiTarget.Identifier());
+            cmd.SetGlobalTexture(ShaderPropertyId.sourceTex, m_Source.Identifier());
 
             var colorLoadAction = cameraData.isDefaultViewport ? RenderBufferLoadAction.DontCare : RenderBufferLoadAction.Load;
 
